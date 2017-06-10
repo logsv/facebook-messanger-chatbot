@@ -19,6 +19,13 @@ logger = logging.getLogger('django') # logger
 class MessangerBot(View):
     """Facebbok messanger bot for page chatbotstory """
 
+    def __init__(self):
+        self.params = {
+            "access_token": settings.ACCESS_TOKEN #os.environ.get('PAGE_ACCESS_TOKEN')
+        }
+        self.headers = {'Content-Type': "application/json"}
+        self.graph_url = 'https://graph.facebook.com/v2.6/me/messages'
+
     @method_decorator(csrf_exempt)
     def dispatch(self, *args, **kwargs):
         return super(MessangerBot, self).dispatch(*args, **kwargs)
@@ -35,28 +42,55 @@ class MessangerBot(View):
         if data["object"] == "page":
             for entry in data["entry"]:
                 for messaging_event in entry["messaging"]:
+                    sender_id = messaging_event["sender"]["id"]
+                    recipient_id = messaging_event["recipient"]["id"]
                     if messaging_event.get("message", None) is not None:  # someone sent us a message
-                        sender_id = messaging_event["sender"]["id"]
-                        recipient_id = messaging_event["recipient"]["id"]
                         message_text = messaging_event["message"].get('text', 'Tell me more')  # the message's text
-                        self._post_messenger(sender_id, message_text)  # reply
+                        self._post_messange(sender_id, message_text)  # reply
                     if messaging_event.get('postback', None) is not None:
-                        pass
+                        postback = messaging_event.get('postback')
+                        payload = postback.get('payload', '')
+                        self._post_postback(sender_id, payload)
         return HttpResponse('ok', status=200)
 
-    def _post_messenger(self, sender_id, message_text):
-        """post reply on facebook"""
-        params = {
-            "access_token": settings.ACCESS_TOKEN #os.environ.get('PAGE_ACCESS_TOKEN')
+    def _post_postback(self, sender_id, payload):
+        data = {
+            'recipient': {'id': sender_id},
+            'message': {
+                'attachment': {
+                    'type': 'template',
+                    'payload': {
+                        'template_type': 'button',
+                        'text': 'Hi, How can we help you?',
+                        'buttons': [
+                            {
+                                'type': 'web_url',
+                                'url': 'https://codeifyoucansolve.wordpress.com',
+                                'title': 'Code If You Can Solve'
+                            },
+                            {
+                                'type': 'postback',
+                                'title': 'Start Chating',
+                                'payload': "start-chating"
+                            },
+                        ]
+                    }
+                }
+            }
         }
-        headers = {'Content-Type': "application/json"}
+        data = json.dumps(data)
+        status = requests.post(self.graph_url, params=self.params, headers=self.headers, data=data)
+        pprint(status.json())
+
+    def _post_messange(self, sender_id, message_text):
+        """post reply on facebook"""
         data = json.dumps({
             "recipient": {
-                "id": sender_id
+                "id": user_id
             },
             "message": {
                 "text": message_text
             },
         })
-        status = requests.post('https://graph.facebook.com/v2.6/me/messages', params=params, headers=headers, data=data)
+        status = requests.post(self.graph_url, params=self.params, headers=self.headers, data=data)
         pprint(status.json())
